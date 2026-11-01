@@ -1,0 +1,19 @@
+name: Register with ntanis.dev
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ntanis.project.json
+      - .github/workflows/register-project.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  register:
+    permissions:
+      contents: read
+      id-token: write
+    uses: ntanis-dev/ci/.github/workflows/register-project.yml@b8e3a954214f0d3a180473937d0548619227232a

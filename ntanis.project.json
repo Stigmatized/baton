@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 3,
+  "project": {
+    "id": "baton",
+    "displayName": "Baton"
+  },
+  "presentation": {
+    "status": "live",
+    "category": "Developer tools",
+    "tagline": "Several Claude Code accounts, one conversation.",
+    "description": "Tracks each Claude Code account's 5-hour and weekly usage and hands your conversation to the next account when one hits its limit, so you never start over.",
+    "icon": "terminal",
+    "accent": "#d7ac78",
+    "downloadLabel": "Download",
+    "releaseNote": "",
+    "features": [
+      {
+        "title": "One conversation",
+        "description": "When an account hits its limit, Baton resumes the same conversation on the next one."
+      },
+      {
+        "title": "Usage at a glance",
+        "description": "Every account's 5-hour and weekly use, in a full-screen menu and in the Claude Code status line."
+      },
+      {
+        "title": "Your accounts stay yours",
+        "description": "Baton never reads a credential and never touches your default Claude Code account."
+      }
+    ],
+    "technologies": ["Node", "Ink", "React"],
+    "gallery": []
+  },
+  "hosting": {
+    "modes": ["placeholder", "external"],
+    "components": []
+  },
+  "artifacts": [
+    {
+      "id": "source",
+      "publication": "manual",
+      "platform": "source",
+      "architecture": "any",
+      "formats": ["tgz"]
+    }
+  ],
+  "applications": [],
+  "capabilities": {
+    "identity": false,
+    "data": false,
+    "billing": false,
+    "realtime": false,
+    "releases": true
+  },
+  "secrets": []
+}
