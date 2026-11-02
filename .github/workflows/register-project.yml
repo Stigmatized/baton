@@ -16,4 +16,4 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: ntanis-dev/ci/.github/workflows/register-project.yml@b8e3a954214f0d3a180473937d0548619227232a
+    uses: ntanis-dev/ci/.github/workflows/register-project.yml@c3b93e68f9698f2a349f18656c97efe645fba5fe
