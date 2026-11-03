@@ -9,7 +9,7 @@ import { profileDir } from "../src/paths.js";
 import { historyFile } from "../src/usage.js";
 import { CLI, Collect, tempHome, testEnv, write } from "./helpers.js";
 
-// PRIMED CLI only when the test home has its data folder, never from PATH.
+// Ferry only when the test home has its data folder, never from PATH.
 async function baton(home, ...argv) {
   const stdout = new Collect();
   const stderr = new Collect();
@@ -17,7 +17,7 @@ async function baton(home, ...argv) {
     env: testEnv(home),
     stdout,
     stderr,
-    findPrimed: () => null,
+    findFerry: () => null,
   });
   return {
     code,

@@ -142,7 +142,7 @@ const ITEM_LABEL = {
   statusline: "Status line",
   hooks: "Hooks",
   hop: "/hop command",
-  primed: "PRIMED CLI",
+  ferry: "Ferry",
 };
 const WORDS = {
   add: ["added", "will add"],
@@ -153,15 +153,15 @@ const WORDS = {
   skip: ["left alone", "left alone"],
   failed: ["failed", "failed"],
 };
-// Baton's launcher in PRIMED CLI is registered, not installed.
-const PRIMED_WORDS = {
+// Baton's launcher in Ferry is registered, not installed.
+const FERRY_WORDS = {
   ...WORDS,
   add: ["registered", "will register"],
   absent: ["not registered", "not registered"],
 };
-// When PRIMED CLI is not on this machine, the plan says so in one line.
-const PRIMED_MISSING =
-  "PRIMED CLI not found; run baton install again after installing it";
+// When Ferry is not on this machine, the plan says so in one line.
+const FERRY_MISSING =
+  "Ferry not found; run baton install again after installing it";
 
 function itemDetail(item, mode, home) {
   if (item.action === "absent") return "";
@@ -182,7 +182,7 @@ function itemDetail(item, mode, home) {
 }
 
 // The pieces in the order they are listed.
-const ITEM_ORDER = ["statusline", "hooks", "hop", "primed"];
+const ITEM_ORDER = ["statusline", "hooks", "hop", "ferry"];
 
 function countDiff(diff) {
   let added = 0;
@@ -215,7 +215,7 @@ export function planScreen(
   for (const item of items) {
     if (item.action === "missing") {
       lines.push(
-        ...wrapLine([...m.skip, s(" "), s(PRIMED_MISSING, "muted")], width, 2),
+        ...wrapLine([...m.skip, s(" "), s(FERRY_MISSING, "muted")], width, 2),
       );
       continue;
     }
@@ -227,7 +227,7 @@ export function planScreen(
       : dryRun
         ? [s(g.arrow, "accent bold")]
         : m.done;
-    const word = (item.name === "primed" ? PRIMED_WORDS : WORDS)[item.action][
+    const word = (item.name === "ferry" ? FERRY_WORDS : WORDS)[item.action][
       dryRun ? 1 : 0
     ];
     const tone = changing ? (dryRun ? "accent bold" : "ok bold") : "muted";

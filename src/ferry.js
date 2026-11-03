@@ -4,14 +4,14 @@ import { findOnPath } from "./claude-path.js";
 import { readText } from "./fsutil.js";
 import { forward, samePath } from "./paths.js";
 
-// Baton as a PRIMED CLI launcher. When PRIMED CLI is on this machine (its
-// data folder exists, or `primed` is on PATH), `baton install` writes
-// <data>/launchers/baton.json, so PRIMED CLI can open a project in Baton and
+// Baton as a Ferry launcher. When Ferry is on this machine (its
+// data folder exists, or `ferry` is on PATH), `baton install` writes
+// <data>/launchers/baton.json, so Ferry can open a project in Baton and
 // resume or continue a Claude Code conversation there; `baton uninstall`
-// removes the file while it is still Baton's. <data> is PRIMED_CLI_HOME, else
-// ~/.primed-cli in Baton's own home (BATON_HOME keeps the tests away from the
+// removes the file while it is still Baton's. <data> is FERRY_HOME, else
+// ~/.ferry in Baton's own home (BATON_HOME keeps the tests away from the
 // real one). The file runs node + Baton's cli.js directly (exec form, like
-// the hooks): no shell and no .cmd shim. Its format is PRIMED CLI's launcher
+// the hooks): no shell and no .cmd shim. Its format is Ferry's launcher
 // schema, version 1.
 
 export const LAUNCHER_ID = "baton";
@@ -25,29 +25,27 @@ const isDir = (p) => {
   }
 };
 
-export const primedHome = (paths, env = process.env) =>
-  env.PRIMED_CLI_HOME
-    ? resolve(env.PRIMED_CLI_HOME)
-    : join(paths.home, ".primed-cli");
+export const ferryHome = (paths, env = process.env) =>
+  env.FERRY_HOME ? resolve(env.FERRY_HOME) : join(paths.home, ".ferry");
 
 export const launcherPath = (data) =>
   join(data, "launchers", `${LAUNCHER_ID}.json`);
 
-// PRIMED CLI keeps its data folder private: a folder Baton creates there is
-// this user's only, and so is the launcher file, as PRIMED CLI writes its own.
+// Ferry keeps its data folder private: a folder Baton creates there is
+// this user's only, and so is the launcher file, as Ferry writes its own.
 export const PRIVATE = { dirMode: 0o700, mode: 0o600 };
 
-// { found, data, file, program }: program is where `primed` is on PATH, looked
-// up only when the data folder does not exist. findPrimed() -> path | null
+// { found, data, file, program }: program is where `ferry` is on PATH, looked
+// up only when the data folder does not exist. findFerry() -> path | null
 // replaces the PATH lookup (the tests pass their own).
-export function detectPrimed({
+export function detectFerry({
   paths,
   env = process.env,
   platform = process.platform,
-  findPrimed = () => findOnPath("primed", { env, platform }),
+  findFerry = () => findOnPath("ferry", { env, platform }),
 }) {
-  const data = primedHome(paths, env);
-  const program = isDir(data) ? null : (findPrimed() ?? null);
+  const data = ferryHome(paths, env);
+  const program = isDir(data) ? null : (findFerry() ?? null);
   return {
     found: program !== null || isDir(data),
     data,
@@ -56,7 +54,7 @@ export function detectPrimed({
   };
 }
 
-// Braces are PRIMED CLI's placeholders: a path's own are doubled.
+// Braces are Ferry's placeholders: a path's own are doubled.
 const literal = (text) => text.replace(/[{}]/g, "$&$&");
 
 export function launcherDef(nodePath, cliPath) {
@@ -93,28 +91,28 @@ export function parseLauncher(text) {
 export const isBatonLauncher = (value) =>
   value?.id === LAUNCHER_ID && value?.source === LAUNCHER_SOURCE;
 
-// The registration, for doctor: state is absent (no PRIMED CLI), missing,
+// The registration, for doctor: state is absent (no Ferry), missing,
 // current, stale (Baton's, but not what baton install writes now: node and
 // cli say which path changed) or foreign (a baton.json that is not Baton's).
 export function registrationState({
   paths,
   env = process.env,
   platform = process.platform,
-  findPrimed,
+  findFerry,
   nodePath = process.execPath,
   cliPath,
 }) {
-  const primed = detectPrimed({ paths, env, platform, findPrimed });
-  if (!primed.found) return { ...primed, state: "absent" };
-  const text = readText(primed.file);
-  if (text === null) return { ...primed, state: "missing" };
+  const ferry = detectFerry({ paths, env, platform, findFerry });
+  if (!ferry.found) return { ...ferry, state: "absent" };
+  const text = readText(ferry.file);
+  if (text === null) return { ...ferry, state: "missing" };
   if (text === launcherText(nodePath, cliPath))
-    return { ...primed, state: "current" };
+    return { ...ferry, state: "current" };
   const value = parseLauncher(text);
-  if (!isBatonLauncher(value)) return { ...primed, state: "foreign" };
+  if (!isBatonLauncher(value)) return { ...ferry, state: "foreign" };
   const want = launcherDef(nodePath, cliPath);
   return {
-    ...primed,
+    ...ferry,
     state: "stale",
     node: !samePath(String(value.program), want.program, platform),
     cli: !samePath(

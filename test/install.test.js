@@ -18,15 +18,15 @@ import { CLI, tempHome, write } from "./helpers.js";
 const NODE = "C:/Program Files/nodejs/node.exe";
 const read = (f) => readFileSync(f, "utf8");
 const json = (f) => JSON.parse(read(f));
-// No PRIMED CLI, whatever is on this machine (test/primed.test.js has it).
-const NO_PRIMED = { env: {}, findPrimed: () => null };
+// No Ferry, whatever is on this machine (test/ferry.test.js has it).
+const NO_FERRY = { env: {}, findFerry: () => null };
 
 function install(paths, opts = {}) {
   const plan = planInstall({
     paths,
     nodePath: NODE,
     cliPath: CLI,
-    ...NO_PRIMED,
+    ...NO_FERRY,
     ...opts,
   });
   return { plan, applied: applyPlan(plan, { paths }) };
@@ -39,7 +39,7 @@ test("dry run: the plan shows the changes and writes nothing", (t) => {
     paths,
     nodePath: NODE,
     cliPath: CLI,
-    ...NO_PRIMED,
+    ...NO_FERRY,
   });
   assert.equal(plan.files.length, 2);
   assert.ok(
@@ -185,7 +185,7 @@ test("uninstall restores the previous status line and removes exactly Baton's en
   };
   write(settingsPath(paths), original);
   install(paths);
-  const plan = planUninstall({ paths, ...NO_PRIMED });
+  const plan = planUninstall({ paths, ...NO_FERRY });
   assert.equal(plan.files.length, 2);
   const { changed, backup } = applyPlan(plan, { paths });
   assert.equal(changed, true);
@@ -194,7 +194,7 @@ test("uninstall restores the previous status line and removes exactly Baton's en
   assert.ok(!existsSync(paths.install));
   assert.ok(existsSync(join(backup, "settings.json")));
   assert.equal(
-    applyPlan(planUninstall({ paths, ...NO_PRIMED }), { paths }).changed,
+    applyPlan(planUninstall({ paths, ...NO_FERRY }), { paths }).changed,
     false,
   );
 });
@@ -203,7 +203,7 @@ test("uninstall without a previous status line removes Baton's; a new settings.j
   const { paths } = tempHome(t);
   install(paths);
   assert.ok(json(settingsPath(paths)).statusLine);
-  applyPlan(planUninstall({ paths, ...NO_PRIMED }), { paths });
+  applyPlan(planUninstall({ paths, ...NO_FERRY }), { paths });
   assert.deepEqual(json(settingsPath(paths)), {});
 });
 
@@ -213,7 +213,7 @@ test("an operator's own /hop command is left alone", (t) => {
   const { plan } = install(paths);
   assert.ok(plan.notes.some((n) => n.includes("your own command")));
   assert.equal(read(hopCommandPath(paths)), "my own hop\n");
-  applyPlan(planUninstall({ paths, ...NO_PRIMED }), { paths });
+  applyPlan(planUninstall({ paths, ...NO_FERRY }), { paths });
   assert.equal(read(hopCommandPath(paths)), "my own hop\n");
 });
 
@@ -221,7 +221,7 @@ test("settings.json that is not JSON is refused", (t) => {
   const { paths } = tempHome(t);
   write(settingsPath(paths), "{ nope");
   assert.throws(
-    () => planInstall({ paths, nodePath: NODE, cliPath: CLI, ...NO_PRIMED }),
+    () => planInstall({ paths, nodePath: NODE, cliPath: CLI, ...NO_FERRY }),
     /not valid JSON/,
   );
   assert.equal(read(settingsPath(paths)), "{ nope");

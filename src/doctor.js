@@ -7,7 +7,7 @@ import { resolveClaude } from "./claude-path.js";
 import { loadConfig, nameOf } from "./config.js";
 import { installState } from "./install.js";
 import { profileDir, profileEnv } from "./paths.js";
-import { registrationState } from "./primed.js";
+import { registrationState } from "./ferry.js";
 import { canSymlinkFiles, inspectProfile } from "./profile.js";
 import { statusLineShell } from "./hooks.js";
 import { readConflicts } from "./copies.js";
@@ -19,7 +19,7 @@ import { NO_POLLER } from "./format.js";
 // which profiles are signed in (from `claude auth status --json`, of which
 // only loggedIn and authMethod are kept: no email, no organization), whether
 // the status line, hooks and /hop are installed, and Baton's registration with
-// PRIMED CLI.
+// Ferry.
 
 const parseAuth = (stdout) => {
   const data = JSON.parse(stdout);
@@ -85,8 +85,8 @@ export function authStatus(launcher, env) {
 
 export { profileEnv };
 
-// The registration, in doctor's words: ok is null when PRIMED CLI is not here.
-function primedCheck(r) {
+// The registration, in doctor's words: ok is null when Ferry is not here.
+function ferryCheck(r) {
   switch (r.state) {
     case "absent":
       return [null, "not installed"];
@@ -108,14 +108,14 @@ function primedCheck(r) {
   }
 }
 
-// cliPath and findPrimed: for the PRIMED CLI registration (primed.js).
+// cliPath and findFerry: for the Ferry registration (ferry.js).
 export function runDoctor({
   paths,
   env = process.env,
   platform = process.platform,
   auth = true,
   cliPath = fileURLToPath(new URL("./cli.js", import.meta.url)),
-  findPrimed,
+  findFerry,
 }) {
   const checks = [];
   const add = (name, ok, detail) => checks.push({ name, ok, detail });
@@ -273,9 +273,9 @@ export function runDoctor({
     );
   }
   add(
-    "PRIMED CLI",
-    ...primedCheck(
-      registrationState({ paths, env, platform, findPrimed, cliPath }),
+    "Ferry",
+    ...ferryCheck(
+      registrationState({ paths, env, platform, findFerry, cliPath }),
     ),
   );
   return { ok: checks.every((c) => c.ok !== false), checks };

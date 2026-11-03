@@ -107,7 +107,7 @@ test("both changed: ~/.claude's version is kept, the profile's is backed up and 
     paths,
     env: testEnv(home),
     auth: false,
-    findPrimed: () => null,
+    findFerry: () => null,
   });
   const check = doctor.checks.find((x) => x.name === "copy conflicts");
   assert.equal(check.ok, false);
@@ -166,7 +166,7 @@ test(
       paths,
       env: testEnv(home),
       auth: false,
-      findPrimed: () => null,
+      findFerry: () => null,
     });
     const links = doctor.checks.find((c) => c.name === "file links");
     if (links.detail.startsWith("allowed")) return;

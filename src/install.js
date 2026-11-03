@@ -18,13 +18,13 @@ import { HOOK_EVENTS } from "./hooks.js";
 import { forward, samePath } from "./paths.js";
 import {
   PRIVATE,
-  detectPrimed,
+  detectFerry,
   isBatonLauncher,
   launcherPath,
   launcherText,
   parseLauncher,
-  primedHome,
-} from "./primed.js";
+  ferryHome,
+} from "./ferry.js";
 
 // `baton install` / `baton uninstall`: the only changes Baton makes to account
 // 1's ~/.claude (shared by every profile):
@@ -34,13 +34,13 @@ import {
 //    shell) for SessionStart, UserPromptSubmit, Stop, StopFailure and
 //    SessionEnd;
 //  - commands/hop.md: the /hop command;
-// and, when PRIMED CLI is on this machine, its launcher file for Baton
-// (primed.js), outside ~/.claude.
+// and, when Ferry is on this machine, its launcher file for Baton
+// (ferry.js), outside ~/.claude.
 // Every change is planned first (the plan is what --dry-run shows), the
 // previous files are backed up under ~/.baton/backups/<time>/, writes are
 // atomic, and running it again changes nothing. Uninstall removes exactly
 // Baton's entries and puts the previous status line back. A file that cannot
-// be written stops with an InstallError (no stack trace), except PRIMED CLI's
+// be written stops with an InstallError (no stack trace), except Ferry's
 // launcher, which lives in another tool's folder: its failure is a note.
 
 export const HOP_MARKER = "(installed by Baton)";
@@ -188,15 +188,15 @@ function sameBatonHooks(hooks, desired) {
 
 // planInstall -> { files: [{ path, before, after, diff, backupName }], items,
 // record, notes } (items: what each piece comes to, { name: hooks |
-// statusline | hop | primed, action }). env, platform and findPrimed find
-// PRIMED CLI (primed.js).
+// statusline | hop | ferry, action }). env, platform and findFerry find
+// Ferry (ferry.js).
 export function planInstall({
   paths,
   nodePath = process.execPath,
   cliPath,
   env = process.env,
   platform = process.platform,
-  findPrimed,
+  findFerry,
 }) {
   const file = settingsPath(paths);
   const { text, value } = readSettings(file);
@@ -283,15 +283,15 @@ export function planInstall({
     });
   } else items.push({ name: "hop", action: "same", path: hopFile });
 
-  // PRIMED CLI's launcher for Baton: missing means PRIMED CLI was not found.
-  const primed = detectPrimed({ paths, env, platform, findPrimed });
-  const launcher = primed.found ? primed.file : null;
-  if (!launcher) items.push({ name: "primed", action: "missing" });
+  // Ferry's launcher for Baton: missing means Ferry was not found.
+  const ferry = detectFerry({ paths, env, platform, findFerry });
+  const launcher = ferry.found ? ferry.file : null;
+  if (!launcher) items.push({ name: "ferry", action: "missing" });
   else {
     const before = readText(launcher);
     const after = launcherText(nodePath, cliPath);
     if (before === after)
-      items.push({ name: "primed", action: "same", path: launcher });
+      items.push({ name: "ferry", action: "same", path: launcher });
     else {
       if (before !== null && !isBatonLauncher(parseLauncher(before)))
         notes.push(
@@ -302,11 +302,11 @@ export function planInstall({
         before,
         after,
         diff: diffLines(before, after),
-        backupName: "primed-cli-baton.json",
-        primed: true,
+        backupName: "ferry-baton.json",
+        ferry: true,
       });
       items.push({
-        name: "primed",
+        name: "ferry",
         action: before === null ? "add" : "update",
         path: launcher,
       });
@@ -389,9 +389,9 @@ export function planUninstall({ paths, env = process.env }) {
     action: ours ? "remove" : "absent",
     path: hopFile,
   });
-  // PRIMED CLI's launcher file, where it is now and where install wrote it
-  // (PRIMED_CLI_HOME may have changed since): removed only while Baton's.
-  const data = primedHome(paths, env);
+  // Ferry's launcher file, where it is now and where install wrote it
+  // (FERRY_HOME may have changed since): removed only while Baton's.
+  const data = ferryHome(paths, env);
   const launchers = [launcherPath(data)];
   if (record?.launcher && !samePath(launchers[0], record.launcher))
     launchers.push(record.launcher);
@@ -402,7 +402,7 @@ export function planUninstall({ paths, env = process.env }) {
     listed = true;
     if (!isBatonLauncher(parseLauncher(before))) {
       notes.push(`${launcher} is not Baton's; Baton leaves it.`);
-      items.push({ name: "primed", action: "skip", path: launcher });
+      items.push({ name: "ferry", action: "skip", path: launcher });
       continue;
     }
     files.push({
@@ -410,13 +410,13 @@ export function planUninstall({ paths, env = process.env }) {
       before,
       after: null,
       diff: diffLines(before, null),
-      backupName: `primed-cli-baton${i ? `-${i + 1}` : ""}.json`,
-      primed: true,
+      backupName: `ferry-baton${i ? `-${i + 1}` : ""}.json`,
+      ferry: true,
     });
-    items.push({ name: "primed", action: "remove", path: launcher });
+    items.push({ name: "ferry", action: "remove", path: launcher });
   }
   if (!listed && existsSync(data))
-    items.push({ name: "primed", action: "absent" });
+    items.push({ name: "ferry", action: "absent" });
   return { files, notes, items, record: null };
 }
 
@@ -444,7 +444,7 @@ function attempt(what, file, work) {
 // since it holds the previous status line, which must not be lost to a
 // write that fails after settings.json; then each file atomically (through a
 // symbolic link to its target); and an uninstall's record goes last, for the
-// same reason. PRIMED CLI's launcher that cannot be written or removed is a
+// same reason. Ferry's launcher that cannot be written or removed is a
 // note on the plan (its item says it failed), and the rest goes on. Returns
 // the backup folder.
 export function applyPlan(plan, { paths, now = Date.now() }) {
@@ -480,15 +480,15 @@ export function applyPlan(plan, { paths, now = Date.now() }) {
     try {
       attempt(what, f.path, () => {
         if (f.after === null) rmSync(target, { force: true });
-        else writeFileAtomic(target, f.after, f.primed ? PRIVATE : undefined);
+        else writeFileAtomic(target, f.after, f.ferry ? PRIVATE : undefined);
       });
     } catch (error) {
-      if (!f.primed) throw error;
+      if (!f.ferry) throw error;
       plan.notes.push(
-        `${error.message}. The rest is done; fix it and run baton ${plan.record ? "install" : "uninstall"} again to ${plan.record ? "register Baton with" : "remove Baton from"} PRIMED CLI.`,
+        `${error.message}. The rest is done; fix it and run baton ${plan.record ? "install" : "uninstall"} again to ${plan.record ? "register Baton with" : "remove Baton from"} Ferry.`,
       );
       for (const item of plan.items)
-        if (item.name === "primed" && item.path === f.path)
+        if (item.name === "ferry" && item.path === f.path)
           item.action = "failed";
     }
   }

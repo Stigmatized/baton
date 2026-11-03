@@ -13,20 +13,20 @@ import { main } from "../src/cli.js";
 import { runDoctor } from "../src/doctor.js";
 import { applyPlan, planInstall, planUninstall } from "../src/install.js";
 import { forward } from "../src/paths.js";
-import { launcherDef, registrationState } from "../src/primed.js";
+import { launcherDef, registrationState } from "../src/ferry.js";
 import { CLI, Collect, tempHome, testEnv, write } from "./helpers.js";
 
 // Never the node running the tests (the doctor test tells them apart).
 const NODE = "C:/Program Files/node-under-test/node.exe";
 const read = (f) => readFileSync(f, "utf8");
 const json = (f) => JSON.parse(read(f));
-// `primed` is never on PATH unless a test says so.
+// `ferry` is never on PATH unless a test says so.
 const noPath = () => null;
 
-// A test home with PRIMED CLI's data folder (~/.primed-cli).
-function primedHome(t) {
+// A test home with Ferry's data folder (~/.ferry).
+function ferryHome(t) {
   const home = tempHome(t);
-  const data = join(home.home, ".primed-cli");
+  const data = join(home.home, ".ferry");
   mkdirSync(data, { recursive: true });
   return { ...home, data, file: join(data, "launchers", "baton.json") };
 }
@@ -37,7 +37,7 @@ const plan = (paths, opts = {}) =>
     nodePath: NODE,
     cliPath: CLI,
     env: {},
-    findPrimed: noPath,
+    findFerry: noPath,
     ...opts,
   });
 
@@ -51,7 +51,7 @@ function uninstall(paths, env = {}) {
   return { plan: p, applied: applyPlan(p, { paths }) };
 }
 
-const primedItems = (p) => p.items.filter((i) => i.name === "primed");
+const ferryItems = (p) => p.items.filter((i) => i.name === "ferry");
 
 async function baton(home, ...argv) {
   const stdout = new Collect();
@@ -59,12 +59,12 @@ async function baton(home, ...argv) {
     env: testEnv(home),
     stdout,
     stderr: new Collect(),
-    findPrimed: noPath,
+    findFerry: noPath,
   });
   return { code, out: stdout.text };
 }
 
-// PRIMED CLI's launcher format, schema version 1: what is wrong with a file
+// Ferry's launcher format, schema version 1: what is wrong with a file
 // (nothing when it is valid).
 function launcherProblems(def, fileName) {
   const problems = [];
@@ -118,33 +118,33 @@ function launcherProblems(def, fileName) {
   return problems;
 }
 
-test("without PRIMED CLI the plan says so in one line and nothing is written for it", async (t) => {
+test("without Ferry the plan says so in one line and nothing is written for it", async (t) => {
   const { home, paths } = tempHome(t);
   const p = plan(paths);
-  assert.deepEqual(primedItems(p), [{ name: "primed", action: "missing" }]);
-  assert.ok(p.files.every((f) => !f.path.includes(".primed-cli")));
+  assert.deepEqual(ferryItems(p), [{ name: "ferry", action: "missing" }]);
+  assert.ok(p.files.every((f) => !f.path.includes(".ferry")));
   applyPlan(p, { paths });
-  assert.ok(!existsSync(join(home, ".primed-cli")));
+  assert.ok(!existsSync(join(home, ".ferry")));
   assert.equal(json(paths.install).launcher, undefined);
-  // A PRIMED_CLI_HOME that does not exist is not PRIMED CLI either.
+  // A FERRY_HOME that does not exist is not Ferry either.
   assert.deepEqual(
-    primedItems(plan(paths, { env: { PRIMED_CLI_HOME: join(home, "no") } })),
-    [{ name: "primed", action: "missing" }],
+    ferryItems(plan(paths, { env: { FERRY_HOME: join(home, "no") } })),
+    [{ name: "ferry", action: "missing" }],
   );
   const dry = await baton(home, "install", "--dry-run");
   assert.match(
     dry.out,
-    /\n *\S PRIMED CLI not found; run baton install again after installing it\n/,
+    /\n *\S Ferry not found; run baton install again after installing it\n/,
   );
   // Uninstall has nothing to say about it.
-  assert.deepEqual(primedItems(uninstall(paths).plan), []);
+  assert.deepEqual(ferryItems(uninstall(paths).plan), []);
 });
 
 test("dry run: Baton's registration is planned and nothing is written", async (t) => {
-  const { home, paths, file } = primedHome(t);
+  const { home, paths, file } = ferryHome(t);
   const p = plan(paths);
-  assert.deepEqual(primedItems(p), [
-    { name: "primed", action: "add", path: file },
+  assert.deepEqual(ferryItems(p), [
+    { name: "ferry", action: "add", path: file },
   ]);
   const planned = p.files.find((f) => f.path === file);
   assert.equal(planned.before, null);
@@ -153,19 +153,19 @@ test("dry run: Baton's registration is planned and nothing is written", async (t
   assert.equal(dry.code, 0);
   assert.match(
     dry.out,
-    /PRIMED CLI +will register +~\/\.primed-cli\/launchers\/baton\.json/,
+    /Ferry +will register +~\/\.ferry\/launchers\/baton\.json/,
   );
-  assert.match(dry.out, /create +~\/\.primed-cli\/launchers\/baton\.json/);
+  assert.match(dry.out, /create +~\/\.ferry\/launchers\/baton\.json/);
   assert.match(
     (await baton(home, "install", "--dry-run", "--diff")).out,
     /\+ +"source": "baton install"/,
   );
-  assert.ok(!existsSync(join(home, ".primed-cli", "launchers")));
+  assert.ok(!existsSync(join(home, ".ferry", "launchers")));
   assert.ok(!existsSync(paths.install));
 });
 
-test("install writes the launcher file in PRIMED CLI's format: node and Baton's cli.js, exec form", (t) => {
-  const { paths, file } = primedHome(t);
+test("install writes the launcher file in Ferry's format: node and Baton's cli.js, exec form", (t) => {
+  const { paths, file } = ferryHome(t);
   const { applied } = install(paths);
   assert.equal(applied.changed, true);
   const def = json(file);
@@ -190,42 +190,40 @@ test("install writes the launcher file in PRIMED CLI's format: node and Baton's 
       paths,
       cliPath: CLI,
       env: {},
-      findPrimed: noPath,
+      findFerry: noPath,
     }).files.find((f) => f.path === file).after,
   );
   assert.equal(own.program, forward(process.execPath));
   assert.ok(isAbsolute(own.program) && isAbsolute(own.args[0]));
 });
 
-test("a cli.js path with braces stays literal for PRIMED CLI", () => {
+test("a cli.js path with braces stays literal for Ferry", () => {
   const def = launcherDef(NODE, "C:/tools/{baton}/src/cli.js");
   assert.equal(def.args[0], "C:/tools/{{baton}}/src/cli.js");
   assert.deepEqual(launcherProblems(def, "baton.json"), []);
 });
 
-test("PRIMED_CLI_HOME, or `primed` on PATH, finds PRIMED CLI; launchers/ is created", (t) => {
+test("FERRY_HOME, or `ferry` on PATH, finds Ferry; launchers/ is created", (t) => {
   const { home, root, paths } = tempHome(t);
-  const data = join(root, "primed-data");
+  const data = join(root, "ferry-data");
   mkdirSync(data);
-  install(paths, { env: { PRIMED_CLI_HOME: data } });
+  install(paths, { env: { FERRY_HOME: data } });
   assert.ok(existsSync(join(data, "launchers", "baton.json")));
-  assert.ok(!existsSync(join(home, ".primed-cli")));
+  assert.ok(!existsSync(join(home, ".ferry")));
 
-  // On PATH only: ~/.primed-cli, made with its launchers/ folder.
+  // On PATH only: ~/.ferry, made with its launchers/ folder.
   const other = tempHome(t);
   install(other.paths, {
-    findPrimed: () => join(other.root, "bin", "primed.exe"),
+    findFerry: () => join(other.root, "bin", "ferry.exe"),
   });
-  assert.ok(
-    existsSync(join(other.home, ".primed-cli", "launchers", "baton.json")),
-  );
+  assert.ok(existsSync(join(other.home, ".ferry", "launchers", "baton.json")));
 
   // The PATH lookup itself, from the environment it is given.
   const third = tempHome(t);
   const bin = join(third.root, "bin");
   const program = join(
     bin,
-    process.platform === "win32" ? "primed.exe" : "primed",
+    process.platform === "win32" ? "ferry.exe" : "ferry",
   );
   write(program, "");
   chmodSync(program, 0o755);
@@ -235,36 +233,36 @@ test("PRIMED_CLI_HOME, or `primed` on PATH, finds PRIMED CLI; launchers/ is crea
     cliPath: CLI,
     env: { PATH: bin, PATHEXT: ".EXE" },
   });
-  assert.equal(primedItems(found)[0].action, "add");
+  assert.equal(ferryItems(found)[0].action, "add");
   const empty = planInstall({
     paths: third.paths,
     nodePath: NODE,
     cliPath: CLI,
     env: { PATH: join(third.root, "empty"), PATHEXT: ".EXE" },
   });
-  assert.equal(primedItems(empty)[0].action, "missing");
+  assert.equal(ferryItems(empty)[0].action, "missing");
 });
 
 test("install again changes nothing; Baton moving updates the file after a backup", (t) => {
-  const { paths, file } = primedHome(t);
+  const { paths, file } = ferryHome(t);
   install(paths);
   const text = read(file);
   const again = install(paths);
   assert.equal(again.applied.changed, false);
   assert.equal(again.plan.files.length, 0);
-  assert.deepEqual(primedItems(again.plan), [
-    { name: "primed", action: "same", path: file },
+  assert.deepEqual(ferryItems(again.plan), [
+    { name: "ferry", action: "same", path: file },
   ]);
   assert.equal(read(file), text);
   const moved = join(CLI, "..", "..", "..", "baton-moved", "src", "cli.js");
   const after = install(paths, { cliPath: moved });
-  assert.equal(primedItems(after.plan)[0].action, "update");
-  assert.equal(read(join(after.applied.backup, "primed-cli-baton.json")), text);
+  assert.equal(ferryItems(after.plan)[0].action, "update");
+  assert.equal(read(join(after.applied.backup, "ferry-baton.json")), text);
   assert.equal(json(file).args[0], forward(moved));
 });
 
 test("a baton.json that is not Baton's is backed up, then replaced", (t) => {
-  const { paths, file } = primedHome(t);
+  const { paths, file } = ferryHome(t);
   write(file, {
     schemaVersion: 1,
     id: "baton",
@@ -275,85 +273,85 @@ test("a baton.json that is not Baton's is backed up, then replaced", (t) => {
   const before = read(file);
   const { plan: p, applied } = install(paths);
   assert.ok(p.notes.some((n) => n.includes("not Baton's")));
-  assert.equal(read(join(applied.backup, "primed-cli-baton.json")), before);
+  assert.equal(read(join(applied.backup, "ferry-baton.json")), before);
   assert.equal(json(file).source, "baton install");
 });
 
 test("uninstall removes Baton's launcher only, after a backup; the other launchers stay", (t) => {
-  const { paths, data, file } = primedHome(t);
+  const { paths, data, file } = ferryHome(t);
   const theirs = join(data, "launchers", "tool.json");
   write(theirs, { schemaVersion: 1, id: "tool", name: "Tool", program: "t" });
   install(paths);
   const text = read(file);
   const { plan: p, applied } = uninstall(paths);
-  assert.deepEqual(primedItems(p), [
-    { name: "primed", action: "remove", path: file },
+  assert.deepEqual(ferryItems(p), [
+    { name: "ferry", action: "remove", path: file },
   ]);
   assert.ok(!existsSync(file));
   assert.ok(existsSync(theirs));
-  assert.equal(read(join(applied.backup, "primed-cli-baton.json")), text);
+  assert.equal(read(join(applied.backup, "ferry-baton.json")), text);
   const again = uninstall(paths);
   assert.equal(again.applied.changed, false);
-  assert.deepEqual(primedItems(again.plan), [
-    { name: "primed", action: "absent" },
+  assert.deepEqual(ferryItems(again.plan), [
+    { name: "ferry", action: "absent" },
   ]);
 });
 
 test("uninstall leaves a baton.json whose id or source is not Baton's", (t) => {
-  const { paths, file } = primedHome(t);
+  const { paths, file } = ferryHome(t);
   install(paths);
   for (const change of [{ source: "by hand" }, { id: "other" }]) {
     const mine = { ...launcherDef(NODE, CLI), ...change };
     write(file, mine);
     const { plan: p } = uninstall(paths);
-    assert.deepEqual(primedItems(p), [
-      { name: "primed", action: "skip", path: file },
+    assert.deepEqual(ferryItems(p), [
+      { name: "ferry", action: "skip", path: file },
     ]);
     assert.ok(p.notes.some((n) => n.includes("not Baton's")));
     assert.deepEqual(json(file), mine);
   }
 });
 
-test("uninstall finds the launcher where install wrote it after PRIMED_CLI_HOME changed", (t) => {
+test("uninstall finds the launcher where install wrote it after FERRY_HOME changed", (t) => {
   const { root, paths } = tempHome(t);
-  const data = join(root, "primed-data");
+  const data = join(root, "ferry-data");
   mkdirSync(data);
-  install(paths, { env: { PRIMED_CLI_HOME: data } });
+  install(paths, { env: { FERRY_HOME: data } });
   const file = join(data, "launchers", "baton.json");
   assert.ok(existsSync(file));
   const { plan: p } = uninstall(paths, {});
-  assert.deepEqual(primedItems(p), [
-    { name: "primed", action: "remove", path: file },
+  assert.deepEqual(ferryItems(p), [
+    { name: "ferry", action: "remove", path: file },
   ]);
   assert.ok(!existsSync(file));
 });
 
 test("install and uninstall from the command line register and remove Baton", async (t) => {
-  const { home, file } = primedHome(t);
+  const { home, file } = ferryHome(t);
   const done = await baton(home, "install");
   assert.match(
     done.out,
-    /PRIMED CLI +registered +~\/\.primed-cli\/launchers\/baton\.json/,
+    /Ferry +registered +~\/\.ferry\/launchers\/baton\.json/,
   );
   assert.equal(json(file).args[0], forward(CLI));
   assert.match(
     (await baton(home, "install")).out,
-    /PRIMED CLI +in place +~\/\.primed-cli\/launchers\/baton\.json/,
+    /Ferry +in place +~\/\.ferry\/launchers\/baton\.json/,
   );
   const removed = await baton(home, "uninstall");
   assert.match(
     removed.out,
-    /PRIMED CLI +removed +~\/\.primed-cli\/launchers\/baton\.json/,
+    /Ferry +removed +~\/\.ferry\/launchers\/baton\.json/,
   );
   assert.ok(!existsSync(file));
 });
 
 test("a launcher that cannot be written is a note: the rest is installed and the status line survives", async (t) => {
-  const { home, paths, data } = primedHome(t);
+  const { home, paths, data } = ferryHome(t);
   write(join(home, ".claude", "settings.json"), {
     statusLine: { command: "my-own-status" },
   });
-  // PRIMED CLI's launchers/ is a file: Baton cannot write its launcher there.
+  // Ferry's launchers/ is a file: Baton cannot write its launcher there.
   write(join(data, "launchers"), "not a folder");
   const stdout = new Collect();
   const stderr = new Collect();
@@ -361,10 +359,10 @@ test("a launcher that cannot be written is a note: the rest is installed and the
     env: testEnv(home),
     stdout,
     stderr,
-    findPrimed: noPath,
+    findFerry: noPath,
   });
   assert.equal(code, 0, stderr.text);
-  assert.match(stdout.text, /PRIMED CLI +failed/);
+  assert.match(stdout.text, /Ferry +failed/);
   assert.match(stdout.text, /Could not write[\s\S]*baton\.json:/);
   assert.equal(stderr.text, "");
   const settings = json(join(home, ".claude", "settings.json"));
@@ -375,7 +373,7 @@ test("a launcher that cannot be written is a note: the rest is installed and the
   // Fixed, it registers, and uninstall still puts the operator's status line back.
   rmSync(join(data, "launchers"));
   const again = await baton(home, "install");
-  assert.match(again.out, /PRIMED CLI +registered/);
+  assert.match(again.out, /Ferry +registered/);
   assert.deepEqual(json(paths.install).previousStatusLine, {
     command: "my-own-status",
   });
@@ -397,7 +395,7 @@ test("a file Baton cannot write stops install with a message, and the record kee
     env: testEnv(home),
     stdout: new Collect(),
     stderr,
-    findPrimed: noPath,
+    findFerry: noPath,
   });
   assert.equal(code, 2);
   assert.match(stderr.text, /Could not write[\s\S]*hop\.md:/);
@@ -414,13 +412,13 @@ test("a file Baton cannot write stops install with a message, and the record kee
 });
 
 test(
-  "PRIMED CLI's folders that install creates are private, and so is the launcher",
+  "Ferry's folders that install creates are private, and so is the launcher",
   { skip: process.platform === "win32" && "unix permissions" },
   (t) => {
     const { home, root, paths } = tempHome(t);
-    install(paths, { findPrimed: () => join(root, "bin", "primed") });
+    install(paths, { findFerry: () => join(root, "bin", "ferry") });
     const mode = (p) => statSync(p).mode & 0o777;
-    const data = join(home, ".primed-cli");
+    const data = join(home, ".ferry");
     assert.equal(mode(data), 0o700);
     assert.equal(mode(join(data, "launchers")), 0o700);
     assert.equal(mode(join(data, "launchers", "baton.json")), 0o600);
@@ -438,15 +436,15 @@ test("doctor: not installed (not a failure), not registered, current, stale, not
       env: testEnv(home),
       auth: false,
       cliPath: CLI,
-      findPrimed: noPath,
-    }).checks.find((c) => c.name === "PRIMED CLI");
+      findFerry: noPath,
+    }).checks.find((c) => c.name === "Ferry");
   assert.deepEqual(check(), {
-    name: "PRIMED CLI",
+    name: "Ferry",
     ok: null,
     detail: "not installed",
   });
 
-  const data = join(home, ".primed-cli");
+  const data = join(home, ".ferry");
   const file = join(data, "launchers", "baton.json");
   mkdirSync(data);
   assert.equal(check().ok, false);
@@ -480,7 +478,7 @@ test("doctor: not installed (not a failure), not registered, current, stale, not
     registrationState({
       paths,
       env: {},
-      findPrimed: noPath,
+      findFerry: noPath,
       cliPath: CLI,
     }).state,
     "stale",

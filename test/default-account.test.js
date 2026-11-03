@@ -30,12 +30,12 @@ const SID = "6f0b2d4e-1c3a-4b5d-8e9f-0a1b2c3d4e5f";
 async function baton(home, ...argv) {
   const stdout = new Collect();
   const stderr = new Collect();
-  // PRIMED CLI on this machine's PATH would change what doctor says.
+  // Ferry on this machine's PATH would change what doctor says.
   const code = await main(argv, {
     env: testEnv(home),
     stdout,
     stderr,
-    findPrimed: () => null,
+    findFerry: () => null,
   });
   return { code, out: stdout.text, err: stderr.text };
 }

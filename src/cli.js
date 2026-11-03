@@ -572,14 +572,14 @@ async function refreshProfiles(paths) {
 }
 
 // baton install and baton uninstall: plan, show, and unless --dry-run, apply.
-async function changeSettings(mode, { values, paths, env, findPrimed }) {
+async function changeSettings(mode, { values, paths, env, findFerry }) {
   const install = await import("./install.js");
   const { loadConfig } = await import("./config.js");
   let plan;
   try {
     plan =
       mode === "install"
-        ? install.planInstall({ paths, cliPath: CLI_PATH, env, findPrimed })
+        ? install.planInstall({ paths, cliPath: CLI_PATH, env, findFerry })
         : install.planUninstall({ paths, env });
   } catch (error) {
     if (error instanceof install.InstallError)
@@ -621,7 +621,7 @@ command("install", {
   group: "setup",
   usage: "baton install [--dry-run] [--diff]",
   summary:
-    "Add Baton's status line, hooks and /hop command to ~/.claude, and register Baton with PRIMED CLI when it is installed (shows the changes, keeps a backup, idempotent); --diff lists every changed line.",
+    "Add Baton's status line, hooks and /hop command to ~/.claude, and register Baton with Ferry when it is installed (shows the changes, keeps a backup, idempotent); --diff lists every changed line.",
   options: { "dry-run": { type: "boolean" }, diff: { type: "boolean" } },
   run: (context) => changeSettings("install", context),
 });
@@ -630,7 +630,7 @@ command("uninstall", {
   group: "setup",
   usage: "baton uninstall [--dry-run] [--diff]",
   summary:
-    "Remove Baton's status line, hooks and /hop command from ~/.claude, restore the previous status line, and remove Baton's PRIMED CLI launcher; --diff lists every changed line.",
+    "Remove Baton's status line, hooks and /hop command from ~/.claude, restore the previous status line, and remove Baton's Ferry launcher; --diff lists every changed line.",
   options: { "dry-run": { type: "boolean" }, diff: { type: "boolean" } },
   run: (context) => changeSettings("uninstall", context),
 });
@@ -639,10 +639,10 @@ command("doctor", {
   group: "setup",
   usage: "baton doctor [--json]",
   summary:
-    "Check Claude Code, every profile's links and sign-in, the installed status line and hooks, and the PRIMED CLI registration.",
-  async run({ env, paths, findPrimed }) {
+    "Check Claude Code, every profile's links and sign-in, the installed status line and hooks, and the Ferry registration.",
+  async run({ env, paths, findFerry }) {
     const { runDoctor } = await import("./doctor.js");
-    const report = runDoctor({ paths, env, cliPath: CLI_PATH, findPrimed });
+    const report = runDoctor({ paths, env, cliPath: CLI_PATH, findFerry });
     return {
       data: report,
       screen: screen("doctorScreen", report),
@@ -735,8 +735,8 @@ async function complain(message, { stderr, env }) {
   stderr.write(errorText(message, terminalFor(stderr, env)) + "\n");
 }
 
-// main(argv, { env, stdout, stderr, findPrimed }) -> exit code. findPrimed()
-// -> path | null replaces the PATH lookup of PRIMED CLI (the tests pass
+// main(argv, { env, stdout, stderr, findFerry }) -> exit code. findFerry()
+// -> path | null replaces the PATH lookup of Ferry (the tests pass
 // their own).
 export async function main(
   argv = process.argv.slice(2),
@@ -744,7 +744,7 @@ export async function main(
     env = process.env,
     stdout = process.stdout,
     stderr = process.stderr,
-    findPrimed,
+    findFerry,
   } = {},
 ) {
   const paths = pathsFor(env);
@@ -792,7 +792,7 @@ export async function main(
         rest,
         env,
         paths,
-        findPrimed,
+        findFerry,
       })) ?? {};
     if (!result.quiet)
       await present(result, { json: values.json, stdout, env });
