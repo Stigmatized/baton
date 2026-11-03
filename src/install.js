@@ -15,7 +15,16 @@ import {
   writeJsonAtomic,
 } from "./fsutil.js";
 import { HOOK_EVENTS } from "./hooks.js";
-import { forward } from "./paths.js";
+import { forward, samePath } from "./paths.js";
+import {
+  PRIVATE,
+  detectPrimed,
+  isBatonLauncher,
+  launcherPath,
+  launcherText,
+  parseLauncher,
+  primedHome,
+} from "./primed.js";
 
 // `baton install` / `baton uninstall`: the only changes Baton makes to account
 // 1's ~/.claude (shared by every profile):
@@ -24,11 +33,15 @@ import { forward } from "./paths.js";
 //    there was one), and command hooks (exec form: node + Baton's cli.js, no
 //    shell) for SessionStart, UserPromptSubmit, Stop, StopFailure and
 //    SessionEnd;
-//  - commands/hop.md: the /hop command.
+//  - commands/hop.md: the /hop command;
+// and, when PRIMED CLI is on this machine, its launcher file for Baton
+// (primed.js), outside ~/.claude.
 // Every change is planned first (the plan is what --dry-run shows), the
 // previous files are backed up under ~/.baton/backups/<time>/, writes are
 // atomic, and running it again changes nothing. Uninstall removes exactly
-// Baton's entries and puts the previous status line back.
+// Baton's entries and puts the previous status line back. A file that cannot
+// be written stops with an InstallError (no stack trace), except PRIMED CLI's
+// launcher, which lives in another tool's folder: its failure is a note.
 
 export const HOP_MARKER = "(installed by Baton)";
 const HOOK_NAMES = Object.values(HOOK_EVENTS);
@@ -173,9 +186,18 @@ function sameBatonHooks(hooks, desired) {
   return extra.length === 0;
 }
 
-// planInstall -> { files: [{ path, before, after, diff }], items, record, notes }
-// (items: what each piece comes to, { name: hooks | statusline | hop, action }).
-export function planInstall({ paths, nodePath = process.execPath, cliPath }) {
+// planInstall -> { files: [{ path, before, after, diff, backupName }], items,
+// record, notes } (items: what each piece comes to, { name: hooks |
+// statusline | hop | primed, action }). env, platform and findPrimed find
+// PRIMED CLI (primed.js).
+export function planInstall({
+  paths,
+  nodePath = process.execPath,
+  cliPath,
+  env = process.env,
+  platform = process.platform,
+  findPrimed,
+}) {
   const file = settingsPath(paths);
   const { text, value } = readSettings(file);
   const record = readJson(paths.install);
@@ -235,6 +257,7 @@ export function planInstall({ paths, nodePath = process.execPath, cliPath }) {
       before: text,
       after,
       diff: diffLines(text, after),
+      backupName: "settings.json",
     });
 
   const hopFile = hopCommandPath(paths);
@@ -251,6 +274,7 @@ export function planInstall({ paths, nodePath = process.execPath, cliPath }) {
       before: hopBefore,
       after: hopAfter,
       diff: diffLines(hopBefore, hopAfter),
+      backupName: "hop.md",
     });
     items.push({
       name: "hop",
@@ -258,6 +282,36 @@ export function planInstall({ paths, nodePath = process.execPath, cliPath }) {
       path: hopFile,
     });
   } else items.push({ name: "hop", action: "same", path: hopFile });
+
+  // PRIMED CLI's launcher for Baton: missing means PRIMED CLI was not found.
+  const primed = detectPrimed({ paths, env, platform, findPrimed });
+  const launcher = primed.found ? primed.file : null;
+  if (!launcher) items.push({ name: "primed", action: "missing" });
+  else {
+    const before = readText(launcher);
+    const after = launcherText(nodePath, cliPath);
+    if (before === after)
+      items.push({ name: "primed", action: "same", path: launcher });
+    else {
+      if (before !== null && !isBatonLauncher(parseLauncher(before)))
+        notes.push(
+          `${launcher} is not Baton's; it is backed up and replaced by Baton's.`,
+        );
+      files.push({
+        path: launcher,
+        before,
+        after,
+        diff: diffLines(before, after),
+        backupName: "primed-cli-baton.json",
+        primed: true,
+      });
+      items.push({
+        name: "primed",
+        action: before === null ? "add" : "update",
+        path: launcher,
+      });
+    }
+  }
 
   return {
     files,
@@ -271,11 +325,12 @@ export function planInstall({ paths, nodePath = process.execPath, cliPath }) {
       commandPath: hopFile,
       previousStatusLine,
       hooks: Object.keys(desiredHooks),
+      ...(launcher ? { launcher } : {}),
     },
   };
 }
 
-export function planUninstall({ paths }) {
+export function planUninstall({ paths, env = process.env }) {
   const file = settingsPath(paths);
   const { text, value } = readSettings(file);
   const record = readJson(paths.install);
@@ -316,6 +371,7 @@ export function planUninstall({ paths }) {
       before: text,
       after,
       diff: diffLines(text, after),
+      backupName: "settings.json",
     });
   const hopFile = hopCommandPath(paths);
   const hopBefore = readText(hopFile);
@@ -326,17 +382,44 @@ export function planUninstall({ paths }) {
       before: hopBefore,
       after: null,
       diff: diffLines(hopBefore, null),
+      backupName: "hop.md",
     });
   items.push({
     name: "hop",
     action: ours ? "remove" : "absent",
     path: hopFile,
   });
+  // PRIMED CLI's launcher file, where it is now and where install wrote it
+  // (PRIMED_CLI_HOME may have changed since): removed only while Baton's.
+  const data = primedHome(paths, env);
+  const launchers = [launcherPath(data)];
+  if (record?.launcher && !samePath(launchers[0], record.launcher))
+    launchers.push(record.launcher);
+  let listed = false;
+  for (const [i, launcher] of launchers.entries()) {
+    const before = readText(launcher);
+    if (before === null) continue;
+    listed = true;
+    if (!isBatonLauncher(parseLauncher(before))) {
+      notes.push(`${launcher} is not Baton's; Baton leaves it.`);
+      items.push({ name: "primed", action: "skip", path: launcher });
+      continue;
+    }
+    files.push({
+      path: launcher,
+      before,
+      after: null,
+      diff: diffLines(before, null),
+      backupName: `primed-cli-baton${i ? `-${i + 1}` : ""}.json`,
+      primed: true,
+    });
+    items.push({ name: "primed", action: "remove", path: launcher });
+  }
+  if (!listed && existsSync(data))
+    items.push({ name: "primed", action: "absent" });
   return { files, notes, items, record: null };
 }
 
-// Writes a plan: backups first, then each file atomically (through a
-// symbolic link to its target), then the record. Returns the backup folder.
 const recordKey = (r) =>
   r ? JSON.stringify({ ...r, installedAt: null, backup: null }) : null;
 
@@ -348,6 +431,22 @@ export function planIsNoop(plan, paths) {
   );
 }
 
+// fs work that fails as an InstallError saying what could not be done.
+function attempt(what, file, work) {
+  try {
+    work();
+  } catch (error) {
+    throw new InstallError(`Could not ${what} ${file}: ${error.message}`);
+  }
+}
+
+// Writes a plan: backups first; then an install's record, before any file,
+// since it holds the previous status line, which must not be lost to a
+// write that fails after settings.json; then each file atomically (through a
+// symbolic link to its target); and an uninstall's record goes last, for the
+// same reason. PRIMED CLI's launcher that cannot be written or removed is a
+// note on the plan (its item says it failed), and the rest goes on. Returns
+// the backup folder.
 export function applyPlan(plan, { paths, now = Date.now() }) {
   if (planIsNoop(plan, paths)) return { changed: false, backup: null };
   const stamp = iso(now).replace(/[:.]/g, "-");
@@ -355,10 +454,19 @@ export function applyPlan(plan, { paths, now = Date.now() }) {
   for (const f of plan.files) {
     if (f.before === null) continue;
     backup = join(paths.backups, stamp);
-    mkdirSync(backup, { recursive: true });
-    writeFileAtomic(
-      join(backup, f.path === settingsPath(paths) ? "settings.json" : "hop.md"),
-      f.before,
+    attempt("back up", f.path, () => {
+      mkdirSync(backup, { recursive: true });
+      writeFileAtomic(join(backup, f.backupName), f.before);
+    });
+  }
+  if (plan.record) {
+    const record = {
+      ...plan.record,
+      installedAt: iso(now),
+      backup: backup ?? readJson(paths.install)?.backup ?? null,
+    };
+    attempt("write", paths.install, () =>
+      writeJsonAtomic(paths.install, record),
     );
   }
   for (const f of plan.files) {
@@ -368,16 +476,26 @@ export function applyPlan(plan, { paths, now = Date.now() }) {
     } catch {
       // a new file
     }
-    if (f.after === null) rmSync(target, { force: true });
-    else writeFileAtomic(target, f.after);
+    const what = f.after === null ? "remove" : "write";
+    try {
+      attempt(what, f.path, () => {
+        if (f.after === null) rmSync(target, { force: true });
+        else writeFileAtomic(target, f.after, f.primed ? PRIVATE : undefined);
+      });
+    } catch (error) {
+      if (!f.primed) throw error;
+      plan.notes.push(
+        `${error.message}. The rest is done; fix it and run baton ${plan.record ? "install" : "uninstall"} again to ${plan.record ? "register Baton with" : "remove Baton from"} PRIMED CLI.`,
+      );
+      for (const item of plan.items)
+        if (item.name === "primed" && item.path === f.path)
+          item.action = "failed";
+    }
   }
-  if (plan.record)
-    writeJsonAtomic(paths.install, {
-      ...plan.record,
-      installedAt: iso(now),
-      backup: backup ?? readJson(paths.install)?.backup ?? null,
-    });
-  else rmSync(paths.install, { force: true });
+  if (!plan.record)
+    attempt("remove", paths.install, () =>
+      rmSync(paths.install, { force: true }),
+    );
   return { changed: true, backup };
 }
 

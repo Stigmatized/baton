@@ -59,7 +59,7 @@ baton view                          # or open the menu
 | `baton policy`             | Shows the settings; change one with `baton policy --mode order`, `--start-reserve 25` ... |
 | `baton hop [--to account]` | Moves a running conversation at the end of its turn (inside Claude: `/hop [account]`)     |
 | `baton account ...`        | `list`, `add`, `rename`, `remove`, `order`, `move`, `set` (marks and thresholds)          |
-| `baton doctor`             | Checks Claude Code, every profile and the install                                         |
+| `baton doctor`             | Checks Claude Code, every profile, the install and the PRIMED CLI registration            |
 | `baton conflicts`          | Shared files changed in two places at once, with the backups kept                         |
 
 `baton help <command>` shows a command's options, and `--json` prints data instead of the screen where that makes
@@ -141,9 +141,26 @@ Set `NO_COLOR` to drop the colors, `BATON_GLYPHS=plain` for the classic Windows 
   second, never block, and never fail a session. Your own hooks stay.
 - **The `/hop` command** (skipped if you have your own `hop.md`).
 
-The previous files are copied to `~/.baton/backups/<time>/`. `baton uninstall` removes exactly Baton's entries and puts
-your old status line back. To remove Baton completely, uninstall and then delete `~/.baton/` (keep `accounts/` if you
-still want those sign-ins).
+When [PRIMED CLI](#primed-cli) is installed, it also registers Baton there. The previous files are copied to
+`~/.baton/backups/<time>/`. `baton uninstall` removes exactly Baton's entries, its PRIMED CLI launcher included, and
+puts your old status line back. To remove Baton completely, uninstall and then delete `~/.baton/` (keep `accounts/` if
+you still want those sign-ins).
+
+## PRIMED CLI
+
+PRIMED CLI shows every project in one terminal and opens Claude Code, a shell or a dev server in any of them. When it
+is installed, `baton install` adds Baton to it as a launcher: projects get **Open in Baton**, and the Claude Code
+conversations PRIMED CLI lists can be resumed or continued in Baton.
+
+- Baton writes one file, `~/.primed-cli/launchers/baton.json` (under `PRIMED_CLI_HOME` if you set it). It runs your
+  `node` with Baton's `src/cli.js` directly, no shell involved. A different file already there is backed up first.
+  The file, and any folder Baton creates for it, is readable by you only, as PRIMED CLI makes its own. If it cannot be
+  written, `baton install` says why and installs the rest.
+- PRIMED CLI counts as installed when its data folder exists or `primed` is on your PATH. If it is not, the plan says
+  so in one line; run `baton install` again after installing it.
+- `baton doctor` says whether the registration is current. After moving Baton or changing Node, run `baton install`
+  again.
+- `baton uninstall` removes the file, as long as it is still Baton's.
 
 ## More detail
 

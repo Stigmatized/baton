@@ -110,9 +110,13 @@ test("paths show the home folder as ~", () => {
 test("in a terminal, install shows the mark, the pieces and the next step; the same words piped, without escapes", async (t) => {
   const { home } = tempHome(t);
   const env = { ...testEnv(home), BATON_GLYPHS: "rich" };
+  const findPrimed = () => null;
 
   const tty = new Tty(24);
-  assert.equal(await main(["install", "--dry-run"], { env, stdout: tty }), 0);
+  assert.equal(
+    await main(["install", "--dry-run"], { env, stdout: tty, findPrimed }),
+    0,
+  );
   const shown = strip(tty.text);
   assert.match(shown, /\/_____\/_\/ {2}\|_\/_\//, "the wordmark");
   assert.match(shown, /Keep the conversation moving\./);
@@ -123,10 +127,17 @@ test("in a terminal, install shows the mark, the pieces and the next step; the s
     shown,
     /› \/hop command +will add +~\/\.claude\/commands\/hop\.md/,
   );
+  assert.match(
+    shown,
+    /○ PRIMED CLI not found; run baton install again after installing it/,
+  );
   assert.match(tty.text, /\x1b\[/);
 
   const pipe = new Collect();
-  assert.equal(await main(["install", "--dry-run"], { env, stdout: pipe }), 0);
+  assert.equal(
+    await main(["install", "--dry-run"], { env, stdout: pipe, findPrimed }),
+    0,
+  );
   assert.doesNotMatch(pipe.text, /\x1b/);
   assert.doesNotMatch(
     pipe.text,

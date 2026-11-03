@@ -33,13 +33,18 @@ export function readText(file, fallback = null) {
   }
 }
 
-export function writeFileAtomic(file, text) {
-  mkdirSync(dirname(file), { recursive: true });
+// { dirMode, mode }: the permissions of folders it creates and of the file
+// (unix; folders that are there keep theirs).
+export function writeFileAtomic(file, text, { dirMode, mode } = {}) {
+  mkdirSync(dirname(file), {
+    recursive: true,
+    ...(dirMode === undefined ? {} : { mode: dirMode }),
+  });
   const tmp = join(
     dirname(file),
     `.${basename(file)}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`,
   );
-  writeFileSync(tmp, text);
+  writeFileSync(tmp, text, mode === undefined ? undefined : { mode });
   // Windows refuses a rename over a file another process has open without
   // delete sharing (a virus scanner, an editor); retry briefly.
   for (let attempt = 0; ; attempt++) {

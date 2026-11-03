@@ -9,10 +9,16 @@ import { profileDir } from "../src/paths.js";
 import { historyFile } from "../src/usage.js";
 import { CLI, Collect, tempHome, testEnv, write } from "./helpers.js";
 
+// PRIMED CLI only when the test home has its data folder, never from PATH.
 async function baton(home, ...argv) {
   const stdout = new Collect();
   const stderr = new Collect();
-  const code = await main(argv, { env: testEnv(home), stdout, stderr });
+  const code = await main(argv, {
+    env: testEnv(home),
+    stdout,
+    stderr,
+    findPrimed: () => null,
+  });
   return {
     code,
     out: stdout.text,

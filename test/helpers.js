@@ -65,6 +65,13 @@ export const testEnv = (home, extra = {}) => {
   // Not inside a Claude Code session or a lead wrapper, whatever runs the tests.
   delete env.BATON_WRAPPER;
   delete env.CLAUDE_CODE_SESSION_ID;
+  // PRIMED CLI's data folder is the test home's unless a test sets one.
+  for (const key of Object.keys(env))
+    if (
+      key.toUpperCase() === "PRIMED_CLI_HOME" &&
+      !("PRIMED_CLI_HOME" in extra)
+    )
+      delete env[key];
   return env;
 };
 

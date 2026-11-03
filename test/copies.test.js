@@ -103,7 +103,12 @@ test("both changed: ~/.claude's version is kept, the profile's is backed up and 
   assert.deepEqual(JSON.parse(readFileSync(conflict.backup, "utf8")), {
     theme: "two",
   });
-  const doctor = runDoctor({ paths, env: testEnv(home), auth: false });
+  const doctor = runDoctor({
+    paths,
+    env: testEnv(home),
+    auth: false,
+    findPrimed: () => null,
+  });
   const check = doctor.checks.find((x) => x.name === "copy conflicts");
   assert.equal(check.ok, false);
   assert.match(check.detail, /settings\.json changed in acct2/);
@@ -157,7 +162,12 @@ test(
   { skip: process.platform !== "win32" && "Windows only" },
   (t) => {
     const { paths, home } = tempHome(t);
-    const doctor = runDoctor({ paths, env: testEnv(home), auth: false });
+    const doctor = runDoctor({
+      paths,
+      env: testEnv(home),
+      auth: false,
+      findPrimed: () => null,
+    });
     const links = doctor.checks.find((c) => c.name === "file links");
     if (links.detail.startsWith("allowed")) return;
     assert.match(

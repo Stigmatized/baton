@@ -142,6 +142,7 @@ const ITEM_LABEL = {
   statusline: "Status line",
   hooks: "Hooks",
   hop: "/hop command",
+  primed: "PRIMED CLI",
 };
 const WORDS = {
   add: ["added", "will add"],
@@ -150,7 +151,17 @@ const WORDS = {
   same: ["in place", "in place"],
   absent: ["not installed", "not installed"],
   skip: ["left alone", "left alone"],
+  failed: ["failed", "failed"],
 };
+// Baton's launcher in PRIMED CLI is registered, not installed.
+const PRIMED_WORDS = {
+  ...WORDS,
+  add: ["registered", "will register"],
+  absent: ["not registered", "not registered"],
+};
+// When PRIMED CLI is not on this machine, the plan says so in one line.
+const PRIMED_MISSING =
+  "PRIMED CLI not found; run baton install again after installing it";
 
 function itemDetail(item, mode, home) {
   if (item.action === "absent") return "";
@@ -171,7 +182,7 @@ function itemDetail(item, mode, home) {
 }
 
 // The pieces in the order they are listed.
-const ITEM_ORDER = ["statusline", "hooks", "hop"];
+const ITEM_ORDER = ["statusline", "hooks", "hop", "primed"];
 
 function countDiff(diff) {
   let added = 0;
@@ -202,6 +213,12 @@ export function planScreen(
     (a, b) => ITEM_ORDER.indexOf(a.name) - ITEM_ORDER.indexOf(b.name),
   );
   for (const item of items) {
+    if (item.action === "missing") {
+      lines.push(
+        ...wrapLine([...m.skip, s(" "), s(PRIMED_MISSING, "muted")], width, 2),
+      );
+      continue;
+    }
     const changing = ["add", "update", "remove"].includes(item.action);
     const mark = !changing
       ? item.action === "same"
@@ -210,7 +227,9 @@ export function planScreen(
       : dryRun
         ? [s(g.arrow, "accent bold")]
         : m.done;
-    const word = WORDS[item.action][dryRun ? 1 : 0];
+    const word = (item.name === "primed" ? PRIMED_WORDS : WORDS)[item.action][
+      dryRun ? 1 : 0
+    ];
     const tone = changing ? (dryRun ? "accent bold" : "ok bold") : "muted";
     lines.push(
       ...wrapLine(

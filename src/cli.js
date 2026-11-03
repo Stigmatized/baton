@@ -572,15 +572,15 @@ async function refreshProfiles(paths) {
 }
 
 // baton install and baton uninstall: plan, show, and unless --dry-run, apply.
-async function changeSettings(mode, { values, paths }) {
+async function changeSettings(mode, { values, paths, env, findPrimed }) {
   const install = await import("./install.js");
   const { loadConfig } = await import("./config.js");
   let plan;
   try {
     plan =
       mode === "install"
-        ? install.planInstall({ paths, cliPath: CLI_PATH })
-        : install.planUninstall({ paths });
+        ? install.planInstall({ paths, cliPath: CLI_PATH, env, findPrimed })
+        : install.planUninstall({ paths, env });
   } catch (error) {
     if (error instanceof install.InstallError)
       throw new UsageError(error.message);
@@ -589,7 +589,13 @@ async function changeSettings(mode, { values, paths }) {
   const dryRun = !!values["dry-run"];
   let applied = null;
   if (!dryRun) {
-    applied = install.applyPlan(plan, { paths });
+    try {
+      applied = install.applyPlan(plan, { paths });
+    } catch (error) {
+      if (error instanceof install.InstallError)
+        throw new UsageError(error.message);
+      throw error;
+    }
     await refreshProfiles(paths);
   }
   return {
@@ -615,7 +621,7 @@ command("install", {
   group: "setup",
   usage: "baton install [--dry-run] [--diff]",
   summary:
-    "Add Baton's status line, hooks and /hop command to ~/.claude (shows the changes, keeps a backup, idempotent); --diff lists every changed line.",
+    "Add Baton's status line, hooks and /hop command to ~/.claude, and register Baton with PRIMED CLI when it is installed (shows the changes, keeps a backup, idempotent); --diff lists every changed line.",
   options: { "dry-run": { type: "boolean" }, diff: { type: "boolean" } },
   run: (context) => changeSettings("install", context),
 });
@@ -624,7 +630,7 @@ command("uninstall", {
   group: "setup",
   usage: "baton uninstall [--dry-run] [--diff]",
   summary:
-    "Remove Baton's status line, hooks and /hop command from ~/.claude and restore the previous status line; --diff lists every changed line.",
+    "Remove Baton's status line, hooks and /hop command from ~/.claude, restore the previous status line, and remove Baton's PRIMED CLI launcher; --diff lists every changed line.",
   options: { "dry-run": { type: "boolean" }, diff: { type: "boolean" } },
   run: (context) => changeSettings("uninstall", context),
 });
@@ -633,10 +639,10 @@ command("doctor", {
   group: "setup",
   usage: "baton doctor [--json]",
   summary:
-    "Check Claude Code, every profile's links and sign-in, and the installed status line and hooks.",
-  async run({ env, paths }) {
+    "Check Claude Code, every profile's links and sign-in, the installed status line and hooks, and the PRIMED CLI registration.",
+  async run({ env, paths, findPrimed }) {
     const { runDoctor } = await import("./doctor.js");
-    const report = runDoctor({ paths, env });
+    const report = runDoctor({ paths, env, cliPath: CLI_PATH, findPrimed });
     return {
       data: report,
       screen: screen("doctorScreen", report),
@@ -729,10 +735,17 @@ async function complain(message, { stderr, env }) {
   stderr.write(errorText(message, terminalFor(stderr, env)) + "\n");
 }
 
-// main(argv, { env, stdout, stderr }) -> exit code
+// main(argv, { env, stdout, stderr, findPrimed }) -> exit code. findPrimed()
+// -> path | null replaces the PATH lookup of PRIMED CLI (the tests pass
+// their own).
 export async function main(
   argv = process.argv.slice(2),
-  { env = process.env, stdout = process.stdout, stderr = process.stderr } = {},
+  {
+    env = process.env,
+    stdout = process.stdout,
+    stderr = process.stderr,
+    findPrimed,
+  } = {},
 ) {
   const paths = pathsFor(env);
   let name = argv[0];
@@ -773,7 +786,14 @@ export async function main(
       }
     }
     const result =
-      (await definition.run({ values, positionals, rest, env, paths })) ?? {};
+      (await definition.run({
+        values,
+        positionals,
+        rest,
+        env,
+        paths,
+        findPrimed,
+      })) ?? {};
     if (!result.quiet)
       await present(result, { json: values.json, stdout, env });
     return result.code ?? 0;

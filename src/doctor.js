@@ -1,11 +1,13 @@
 import { execFile, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { lowerPriority } from "./fsutil.js";
 import { resolveClaude } from "./claude-path.js";
 import { loadConfig, nameOf } from "./config.js";
 import { installState } from "./install.js";
 import { profileDir, profileEnv } from "./paths.js";
+import { registrationState } from "./primed.js";
 import { canSymlinkFiles, inspectProfile } from "./profile.js";
 import { statusLineShell } from "./hooks.js";
 import { readConflicts } from "./copies.js";
@@ -15,8 +17,9 @@ import { NO_POLLER } from "./format.js";
 
 // `baton doctor`: Claude Code on PATH and its version, every profile's links,
 // which profiles are signed in (from `claude auth status --json`, of which
-// only loggedIn and authMethod are kept: no email, no organization), and
-// whether the status line, hooks and /hop are installed.
+// only loggedIn and authMethod are kept: no email, no organization), whether
+// the status line, hooks and /hop are installed, and Baton's registration with
+// PRIMED CLI.
 
 const parseAuth = (stdout) => {
   const data = JSON.parse(stdout);
@@ -82,11 +85,37 @@ export function authStatus(launcher, env) {
 
 export { profileEnv };
 
+// The registration, in doctor's words: ok is null when PRIMED CLI is not here.
+function primedCheck(r) {
+  switch (r.state) {
+    case "absent":
+      return [null, "not installed"];
+    case "missing":
+      return [false, "not registered: baton install"];
+    case "current":
+      return [true, `registered and current (${r.file})`];
+    case "foreign":
+      return [false, `${r.file} is not Baton's: baton install replaces it`];
+    default: {
+      const why =
+        r.node && r.cli
+          ? "node and cli.js paths changed"
+          : r.node || r.cli
+            ? `${r.node ? "node" : "cli.js"} path changed`
+            : "contents changed";
+      return [false, `registered but stale (${why}): run baton install again`];
+    }
+  }
+}
+
+// cliPath and findPrimed: for the PRIMED CLI registration (primed.js).
 export function runDoctor({
   paths,
   env = process.env,
   platform = process.platform,
   auth = true,
+  cliPath = fileURLToPath(new URL("./cli.js", import.meta.url)),
+  findPrimed,
 }) {
   const checks = [];
   const add = (name, ok, detail) => checks.push({ name, ok, detail });
@@ -243,5 +272,11 @@ export function runDoctor({
         : "not installed (baton hop still works)",
     );
   }
+  add(
+    "PRIMED CLI",
+    ...primedCheck(
+      registrationState({ paths, env, platform, findPrimed, cliPath }),
+    ),
+  );
   return { ok: checks.every((c) => c.ok !== false), checks };
 }
