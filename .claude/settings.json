@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(//**/.credentials.json)",
+      "Edit(/src/**)",
+      "Edit(/test/**)",
+      "Edit(/scripts/**)",
+      "Edit(/package.json)",
+      "Edit(/package-lock.json)",
+      "Bash(git push upstream)",
+      "Bash(git push upstream *)"
+    ]
+  }
+}
