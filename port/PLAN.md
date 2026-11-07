@@ -263,24 +263,29 @@ and for bugs across slice boundaries, not for line-level issues already reviewed
 
 ## Things to verify against real Claude Code
 
-Each is confirmed before the code that depends on it is written: item 1 needs one run with a signed-in account; items
-2 and 3 can be checked in the Claude Code binary and docs.
+Still open, confirmed before milestone 6 starts with one run on a signed-in account:
+`claude -p "/usage" --output-format stream-json --verbose` emits `usage_report` on the assistant message, as the SDK
+path does.
 
-Already verified: on macOS each profile keeps its own sign-in, because Claude Code names the Keychain item after the
-config folder (see [review/install.md](review/install.md), "Credentials on macOS"). Claude Code writes `settings.json`
-through a symlink instead of replacing it (see [Settings sync](#settings-sync)).
-
-1. `claude -p "/usage" --output-format stream-json --verbose` emits `usage_report` on the assistant message, as the
-   SDK path does.
-2. Claude Code writes project entries with `hasTrustDialogAccepted: false` for untrusted folders (the cause of B2).
-3. Whether the `statusLine` setting accepts exec-form `args`, which would remove the quoting problem in R5.
+Verified in Claude Code 2.1.319 and its docs:
+- On macOS each profile keeps its own sign-in: the Keychain item is named after the config folder (see
+  [review/install.md](review/install.md), "Credentials on macOS").
+- Claude Code writes `settings.json` through a symlink instead of replacing it (see [Settings sync](#settings-sync)).
+- Claude Code starts every project entry in `.claude.json` from a default with `hasTrustDialogAccepted: false` and
+  writes the whole entry, so any folder opened in plain `claude` carries an explicit `false` (the cause of B2).
+- The `statusLine` setting takes only a `command` string (`type`, `command`, `padding`, `refreshInterval`,
+  `hideVimModeIndicator`), no exec-form `args`, so R5's 8.3 short path on Windows is needed.
 
 ## Order of work
 
 Each milestone ends with its tests passing on Windows, macOS and Linux.
 
 1. **Foundation.** Workspace, CI matrix, `paths`, `names`, `time`, `config` (with B1, B5), `store` with the schema
-   and the JS import, `lock`. The workspace starts with the checks every later slice relies on:
+   and the JS import, `lock`. The first slice adds the real-home guard: a `baton` built anywhere but the release
+   workflow refuses to start unless `BATON_HOME` is set to a folder other than the real home (the release workflow
+   sets a compile-time flag, read with `option_env!`, that lifts the guard). It runs before anything else in `main`,
+   so tests, `cargo run` and every child process are covered; dogfooding on the real home uses a release build. The
+   workspace starts with the checks every later slice relies on:
    - Edition 2024; the toolchain pinned in `rust-toolchain.toml`.
    - Root `Cargo.toml`: `[workspace.lints.rust] unsafe_code = "deny"`; `[workspace.lints.clippy]` sets `all`,
      `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`, `dbg_macro`, `allow_attributes`,
@@ -295,7 +300,8 @@ Each milestone ends with its tests passing on Windows, macOS and Linux.
    entries, B6, R5, R6, Ferry, doctor.
 5. **Runtime.** `claude` lookup (R7), argument parser (H6), the wrapper loop, ending `claude` (R1–R4), countdown, the
    `hop` command, H5. After this milestone `baton` is usable day to day.
-6. **Usage polling.** The probe (verify item 1 first), the poller, the poll host on an OS lock.
+6. **Usage polling.** The probe (after the open item under "Things to verify"), the poller, the poll host on an OS
+   lock.
 7. **Commands.** Every command and its `--json` output, printed screens (U2–U5).
 8. **Menu.** `cargo xtask shots` first, then the ratatui app with every view, modal, sign-in and mouse support (U1,
    U6–U10), each view landing with its snapshots and images.

@@ -35,7 +35,8 @@ reference implementation: read it to learn behaviour, never copy its structure, 
 ## Gotchas
 
 - `BATON_HOME` replaces the home folder, so it moves both `~/.baton` and `~/.claude`. Tests and manual runs always set
-  it to a temporary folder; running against the real home changes the user's Claude Code setup.
+  it to a temporary folder. Locally built binaries refuse to start without it (the real-home guard); never weaken or
+  bypass that guard.
 - Hooks and the status line run inside every Claude Code session: they must exit 0, and hooks must print nothing to
   stdout (it reaches the model).
 - The JS version was only tested on Windows. The port must work on Windows, macOS and Linux.
