@@ -1,6 +1,6 @@
 # Baton Rust port: plan
 
-Status: draft for discussion. Nothing marked **Proposed** is adopted until it has been discussed.
+Status: every decision here was adopted with the user on 2026-11-07. A new decision is discussed with the user first.
 Based on four read-only reviews of the JS version at commit `f676a1e`, kept in [`review/`](review/):
 
 | Review | Covers |
@@ -21,7 +21,8 @@ This plan only lists the decisions and the order of work.
 - Existing users keep their data: the Rust version imports everything the JS version wrote under `~/.baton`, and
   recognises and upgrades every entry the JS `baton install` put in `~/.claude`.
 - Every behaviour change gets a line in [NOTES.md](NOTES.md) saying what changed and why.
-- During development, Rust runs against a copy of `~/.baton` through `BATON_HOME`, never against the live one.
+- During development, Rust runs only against a temporary `BATON_HOME`, never the real home folder. Testing the import
+  means copying real `~/.baton` data into that temporary home first.
 - The finished branch goes to ntanis as a draft pull request.
 
 ## Architecture
@@ -33,9 +34,10 @@ This plan only lists the decisions and the order of work.
   - `xtask`: developer commands, starting with `cargo xtask shots`.
 - No async runtime. Threads plus channels: one thread waits on the `claude` child, one runs the poll host, the TUI has
   an input thread and a data-loader thread.
-- Crates: `clap`, `serde`/`serde_json` (`preserve_order`), `rusqlite` (`bundled`), `fs4`, `tempfile`, `chrono`,
-  `ratatui` + `crossterm`, `unicode-width` + `unicode-segmentation`, `notify`, `junction`, `dunce`, `same-file`,
-  `sha2`, `similar`, `which`, `signal-hook`, `sysinfo`, `windows-sys` (Windows), `rustix` (Unix). Tests and tooling:
+- Crates: `clap`, `serde`/`serde_json` (`preserve_order`), `thiserror`, `rusqlite` (`bundled`), `fs4`, `tempfile`,
+  `chrono`, `regex`, `uuid`, `crossbeam-channel`, `ratatui` + `crossterm`, `unicode-width` + `unicode-segmentation`
+  + `unicode-normalization`, `notify`, `junction`, `dunce`, `same-file`, `sha2`, `similar` (diffs), `diffy`
+  (three-way merge), `which`, `signal-hook`, `sysinfo`, `windows-sys` (Windows), `rustix` (Unix). Tests and tooling:
   `insta`, `portable-pty`, `vt100`, `resvg`.
 - Modules:
 
@@ -44,19 +46,17 @@ This plan only lists the decisions and the order of work.
 | `paths`, `names`, `time` | home and paths, account names and ids, the single time-format module |
 | `config` | `config.json`: typed, strict, unknown fields kept |
 | `store` | SQLite connection, schema, migrations, the JS import |
-| `lock` | OS advisory locks: session, poll lease, wrapper liveness, config and copies |
+| `lock` | OS advisory locks: session, poll lease, wrapper liveness, config and sync |
 | `usage`, `policy`, `stats` | readings, refusals, refusal inference, account selection, turn decisions; pure functions with an injected clock |
 | `hooks`, `statusline` | the five hook events and the status line |
 | `claude` | locating the executable, the argument parser, the usage probe |
 | `runtime` | the wrapper state machine, ending `claude`, the countdown, `platform::{windows, unix}` |
 | `poll` | the poller and the poll host |
-| `profile`, `copies`, `install`, `ferry`, `doctor` | profiles and links, two-way copies, install/uninstall, Ferry launcher, checks |
+| `profile`, `sync`, `install`, `ferry`, `doctor` | profiles and links, the settings sync engine, install/uninstall, Ferry launcher, checks |
 | `views` | view models shared by printed screens and the TUI: `Vec<Line>` plus click targets |
 | `cli`, `screens`, `tui` | clap commands and outputs, printed screens, the ratatui app |
 
 ## Storage
-
-Adopted 2026-11-07.
 
 **S1. SQLite for live state and history; files for what people read or edit.**
 
@@ -67,7 +67,7 @@ Adopted 2026-11-07.
 | sessions, turn samples, hop requests | SQLite | Hot hook and wrapper traffic; replaces folder-mtime guessing with a `last_seen` column. |
 | wrappers registry, poll state, poll requests | SQLite | Shared read-modify-write. |
 | `config.json` | file | Documented and edited by hand. Edits take the config lock (S2); every save keeps `config.json.bak`. |
-| `install.json`, `copies.json`, `conflicts.json`, `backups/`, `logs/` | files | Rare writes, records people inspect. |
+| `install.json`, `conflicts.json`, `sync/base/`, `backups/`, `logs/` | files | Rare writes, records people inspect. `sync/base/` replaces the JS `copies.json`. |
 | `accounts/<id>/` | folders | They are Claude Code profiles. |
 
 - One database, `~/.baton/baton.db`, WAL mode, `synchronous=NORMAL`, schema version in `PRAGMA user_version`.
@@ -82,7 +82,7 @@ Adopted 2026-11-07.
   `history/*.jsonl` files.
 
 **S2. OS advisory locks instead of lock files and pid checks.**
-The session lock, the poll lease, wrapper liveness, and read-modify-write of `config.json` and `copies.json` all use
+The session lock, the poll lease, wrapper liveness, edits to `config.json` and every run of the sync engine all use
 `fs4` locks on files under `~/.baton/run/`. The OS releases them when a process dies, which removes the races and
 the pid-reuse problems in the JS version.
 
@@ -109,8 +109,6 @@ in `~/.claude`, so nothing keeps writing the old files afterwards.
    start imports them again; doctor reports it.
 
 ## Settings sync
-
-Adopted 2026-11-07.
 
 Goal: every account has the same settings. A change made under any account, or in `~/.claude`, reaches all the
 others without the user doing anything.
@@ -145,6 +143,10 @@ others without the user doing anything.
 
 - When the same key or the same lines changed differently on two sides, the newest change wins everywhere. The other
   value goes to `backups/` and is listed in `baton conflicts`, the menu and doctor.
+- Exception in `.claude.json`: flags that only ever turn on (`hasTrustDialogAccepted`, `hasCompletedOnboarding`,
+  `hasCompletedProjectOnboarding` and the other `has*` flags) keep `true`, counts keep the larger value, and
+  `allowedTools` lists are merged. Claude Code writes untrusted defaults for folders it opens, and newest-wins would
+  let such a default undo trust given under another account (B2).
 - Base snapshots live in `~/.baton/sync/base/`. An item with no snapshot (first run, or just imported from JS) is
   seeded from `~/.claude`, and any differing account copy counts as a change made under that account.
 
@@ -154,33 +156,31 @@ others without the user doing anything.
 - every launch, hop and session start, to catch up on changes made while nothing ran.
 
 **Safety:**
-- The engine runs under Baton's copies lock (S2) and takes Claude Code's own `.claude.json.lock` before touching a
+- The engine runs under Baton's sync lock (S2) and takes Claude Code's own `.claude.json.lock` before touching a
   `.claude.json`.
 - Before replacing a file it re-reads the file's hash; if it changed during the merge, the merge starts over, so a
   concurrent Claude Code save is never lost.
 - When file symlinks become available (Developer Mode turned on), the engine syncs the copies first, then replaces
   them with links.
 
-## Proposed changes
+## Changes from the JS version
 
-Each one is **Proposed** until discussed. The source review has the full reasoning.
+The source review has the full reasoning for each one.
 
 ### Bugs in the JS version
 
-Adopted 2026-11-07: the port fixes all of them. B1–B3 were reported to ntanis the same day.
+The port fixes all of them. B1–B3 were reported to ntanis on 2026-11-07.
 
 | # | Change | Source |
 | --- | --- | --- |
 | B1 | A failed or invalid read of `config.json` is an error, never an empty config. Today the next account change saves the empty config and deletes every account. Saves keep `config.json.bak`. | data §6.1 |
-| B2 | Seeding `.claude.json` never downgrades: trust stays `true`, `allowedTools` merges, profile-only MCP servers stay. Today seeding runs on every launch with the main config winning, which can undo trust and drop MCP servers added under a profile; on a hop it undoes the trust just carried over. | install §6.1–2 |
+| B2 | `.claude.json` keys are merged by the sync engine, which never turns trust or onboarding flags off and never drops MCP servers added under an account (see the exception under [Settings sync](#settings-sync)). Today seeding runs on every launch with the main config winning, which can undo trust and drop MCP servers added under a profile; on a hop it undoes the trust just carried over. | install §6.1–2 |
 | B3 | A `claude` started inside a Baton session cannot take over the wrapper: hooks and the status line are accepted only from the wrapper's own `claude` process tree. | runtime §6.1 |
 | B4 | Two wrappers can no longer drive one conversation (session lock race, pid reuse). Fixed by S2. | data §6.3, runtime §6.2 |
 | B5 | Account ids that are Windows device names (`con`, `nul`, `aux`, `com1`…) get a suffix; ids compare case-insensitively. | data §6.7–8 |
 | B6 | `/hop` works with account names containing `'`, and its `allowed-tools` allows only `baton hop`. | install §6.11 |
 
 ### Behaviour
-
-Adopted 2026-11-07 (H7 became [Settings sync](#settings-sync)).
 
 | # | Change | Source |
 | --- | --- | --- |
@@ -190,13 +190,9 @@ Adopted 2026-11-07 (H7 became [Settings sync](#settings-sync)).
 | H4 | Turn cost and burn rate subtract the increases recorded by other sessions on the same account during the turn. | data §6.10 |
 | H5 | Resume uses the session's project folder (`start.cwd` / `workspace.project_dir`), not its current folder. | runtime §6.11 |
 | H6 | Unknown `claude` flags followed by a value are passed through on resume, with a log line. | runtime §6.12 |
-| H7 | Replaced by [Settings sync](#settings-sync) below. | install §6.5–7 |
+| H7 | Replaced by [Settings sync](#settings-sync). | install §6.5–7 |
 
 ### Runtime and platforms
-
-Adopted 2026-11-07. R5 detail: `baton install` writes the `baton` found on PATH (and stops if there is none), doctor
-checks that it is the same file as the running binary, and on Windows a path with spaces is written in its 8.3 short
-form.
 
 | # | Change | Source |
 | --- | --- | --- |
@@ -204,13 +200,11 @@ form.
 | R2 | Process trees: job objects on Windows, process groups on Unix; the usage probe and auth checks can never outlive Baton. | runtime §6.6 |
 | R3 | Terminal modes are saved before every `claude` launch and restored after every exit; leftover input is flushed before the countdown and the relaunch. | runtime §6.4–5 |
 | R4 | SIGTERM, SIGHUP and closing the console window clean up the lock, the lease and `claude`. | runtime §6.7 |
-| R5 | Hooks and the status line point at a stable `baton` path (the one on PATH, or a fixed shim), not a versioned install folder; on Windows a path with spaces uses its 8.3 short form. | install §6.10, §7 |
-| R6 | Every OS probes whether file symlinks work and falls back to copies; `~/.baton`, profiles and backups are private (0700/0600). | install §7 |
+| R5 | Hooks and the status line point at the `baton` found on PATH, not a versioned install folder. `baton install` stops if `baton` is not on PATH; doctor checks that it is the same file as the running binary; on Windows a path with spaces is written in its 8.3 short form. | install §6.10, §7 |
+| R6 | Every OS probes whether file symlinks work and falls back to the sync engine; `~/.baton`, profiles and backups are private (0700/0600). | install §7 |
 | R7 | `claude` lookup adds `~/.claude/local/claude`, `/opt/homebrew/bin` and `/usr/local/bin` for launches without a shell PATH. | runtime §8 |
 
 ### Interface
-
-Adopted 2026-11-07.
 
 | # | Change | Source |
 | --- | --- | --- |
@@ -226,8 +220,6 @@ Adopted 2026-11-07.
 | U10 | The menu polls usage and re-checks sign-ins regardless of the splash or window size. | ui §5.4 |
 
 ## Testing and review
-
-Adopted 2026-11-07.
 
 - **Unit tests.** The JS suite is ported test by test. `crates/fake-claude` stands in for `claude`: it writes hook
   input, emits stream-json for the usage probe, exits on Ctrl+C or SIGTERM, and records the arguments it got.
@@ -246,8 +238,8 @@ Adopted 2026-11-07.
 
 ## Review process
 
-Adopted 2026-11-07. Every change is reviewed with the `sol-loop` skill (OpenAI's Sol through the codex-bridge
-plugin) before it is committed.
+Every code change is reviewed with the `sol-loop` skill (OpenAI's Sol through the codex-bridge plugin) before it is
+committed. Commits that change only documents in `port/`, `CLAUDE.md` or `.claude/` are not.
 
 **Slices.** Each milestone is split into slices: one coherent piece each, about 300–1,000 lines of non-test code.
 Per slice:
@@ -271,7 +263,8 @@ and for bugs across slice boundaries, not for line-level issues already reviewed
 
 ## Things to verify against real Claude Code
 
-Each needs one run with a signed-in account before the code that depends on it is written.
+Each is confirmed before the code that depends on it is written: item 1 needs one run with a signed-in account; items
+2 and 3 can be checked in the Claude Code binary and docs.
 
 Already verified: on macOS each profile keeps its own sign-in, because Claude Code names the Keychain item after the
 config folder (see [review/install.md](review/install.md), "Credentials on macOS"). Claude Code writes `settings.json`
@@ -298,8 +291,8 @@ Each milestone ends with its tests passing on Windows, macOS and Linux.
      `cargo test`.
 2. **Policy.** `usage`, `policy`, `stats` as pure functions, with H1–H4. Port `policy.test.js` and `usage.test.js`.
 3. **Hooks and status line.** The five events, the status line with chaining to the previous one, B3.
-4. **Profiles and install.** Links, seeding (B2), copies (H7), install/uninstall with recognition of the JS entries,
-   B6, R5, R6, Ferry, doctor.
+4. **Profiles and install.** Links, the settings sync engine (with B2), install/uninstall with recognition of the JS
+   entries, B6, R5, R6, Ferry, doctor.
 5. **Runtime.** `claude` lookup (R7), argument parser (H6), the wrapper loop, ending `claude` (R1–R4), countdown, the
    `hop` command, H5. After this milestone `baton` is usable day to day.
 6. **Usage polling.** The probe (verify item 1 first), the poller, the poll host on an OS lock.

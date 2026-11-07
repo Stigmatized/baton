@@ -27,8 +27,7 @@ reference implementation: read it to learn behaviour, never copy its structure, 
 ## Conventions
 
 - A behaviour change from the JS version adds its line to `port/NOTES.md` in the same commit.
-- Rust conventions: `.claude/rules/rust.md` (loads with Rust files).
-- Commits: one slice per commit, reviewed with the `sol-loop` skill first, base `HEAD`. The message ends with
+- Code commits: one slice per commit, reviewed with the `sol-loop` skill first, base `HEAD`. The message ends with
   `Reviewed with sol-loop: <N> rounds with <model>. Sol verdict: approved`. Details: "Review process" in
   [port/PLAN.md](port/PLAN.md).
 - Push the `rust` branch to `origin` only after an approved slice.
