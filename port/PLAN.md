@@ -233,6 +233,11 @@ The port fixes all of them. B1–B3 were reported to ntanis on 2026-11-07.
   temporary `BATON_HOME`. They send keys, mouse clicks and resizes, change files, and check the screen and the
   terminal modes before and after. The screen grid can go through the PNG renderer.
 - **Demo.** `cargo run --example menu-demo` opens the menu on fixture data with a fake sign-in.
+- **Smoke tests with the real Claude Code.** At the end of milestones 3, 5, 6 and 8, the user runs the real `claude`
+  under a temporary `BATON_HOME`: two accounts added and signed in there with `baton login` (the sign-ins stay in the
+  temporary profiles), then real sessions covering hooks, the status line, `/hop`, a limit hop and `/usage` probing.
+  This catches drift between `crates/fake-claude` and the real `claude`. Transcripts stay in the temporary home.
+- **Real home.** Only at switch-over: a release build, `baton install --dry-run --diff` reviewed first.
 - **Rule for every UI change:** update the snapshots, review their diff, and look at the changed PNGs before the
   change counts as done.
 
